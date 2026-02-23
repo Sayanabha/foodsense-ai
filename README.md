@@ -4,6 +4,7 @@ A food waste prediction and reduction platform for restaurants and hostels. It w
 
 Built with React, Vite, Supabase, and Gemini 2.5 Flash. Hosted free. Costs nothing to run.
 
+Watch live: https://foodsense-v1.netlify.app/
 ---
 
 ## The problem it solves
