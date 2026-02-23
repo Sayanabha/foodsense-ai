@@ -1,0 +1,131 @@
+@import url('https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=Geist+Mono:wght@300;400;500&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ─── LIGHT THEME (default) ─── */
+:root, [data-theme="light"] {
+  --bg:          #fafaf9;
+  --bg2:         #f5f5f3;
+  --bg3:         #efefed;
+  --surface:     #ffffff;
+  --surface2:    #f9f9f8;
+  --border:      #e5e5e2;
+  --border2:     #d4d4d0;
+
+  --text:        #18181b;
+  --text-2:      #52525b;
+  --text-3:      #a1a1aa;
+  --text-inv:    #ffffff;
+
+  --accent:      #059669;
+  --accent-2:    #047857;
+  --accent-bg:   #ecfdf5;
+  --accent-border: #a7f3d0;
+
+  --amber:       #d97706;
+  --amber-bg:    #fffbeb;
+  --amber-border: #fde68a;
+
+  --red:         #dc2626;
+  --red-bg:      #fef2f2;
+  --red-border:  #fecaca;
+
+  --blue:        #2563eb;
+  --blue-bg:     #eff6ff;
+
+  --shadow-sm:   0 1px 2px rgba(0,0,0,0.05);
+  --shadow:      0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04);
+  --shadow-md:   0 4px 6px rgba(0,0,0,0.05), 0 2px 4px rgba(0,0,0,0.04);
+  --shadow-lg:   0 10px 15px rgba(0,0,0,0.06), 0 4px 6px rgba(0,0,0,0.04);
+}
+
+/* ─── DARK THEME ─── */
+[data-theme="dark"] {
+  --bg:          #111110;
+  --bg2:         #161615;
+  --bg3:         #1c1c1a;
+  --surface:     #1c1c1a;
+  --surface2:    #222220;
+  --border:      #2a2a27;
+  --border2:     #343431;
+
+  --text:        #eeeeec;
+  --text-2:      #a8a89f;
+  --text-3:      #62625a;
+  --text-inv:    #111110;
+
+  --accent:      #10b981;
+  --accent-2:    #34d399;
+  --accent-bg:   rgba(16,185,129,0.08);
+  --accent-border: rgba(16,185,129,0.2);
+
+  --amber:       #f59e0b;
+  --amber-bg:    rgba(245,158,11,0.08);
+  --amber-border: rgba(245,158,11,0.2);
+
+  --red:         #ef4444;
+  --red-bg:      rgba(239,68,68,0.08);
+  --red-border:  rgba(239,68,68,0.2);
+
+  --blue:        #3b82f6;
+  --blue-bg:     rgba(59,130,246,0.08);
+
+  --shadow-sm:   0 1px 2px rgba(0,0,0,0.3);
+  --shadow:      0 1px 3px rgba(0,0,0,0.4), 0 1px 2px rgba(0,0,0,0.3);
+  --shadow-md:   0 4px 6px rgba(0,0,0,0.3), 0 2px 4px rgba(0,0,0,0.2);
+  --shadow-lg:   0 10px 15px rgba(0,0,0,0.4), 0 4px 6px rgba(0,0,0,0.3);
+}
+
+/* ─── BASE ─── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html { font-size: 16px; -webkit-font-smoothing: antialiased; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Geist', -apple-system, sans-serif;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  transition: background 0.2s ease, color 0.2s ease;
+}
+
+/* ─── SCROLLBAR ─── */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 10px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-3); }
+
+/* ─── UTILITIES ─── */
+.font-mono  { font-family: 'Geist Mono', monospace; }
+.text-accent { color: var(--accent); }
+
+/* ─── TRANSITIONS ─── */
+* { transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease; }
+button, a { transition: all 0.15s ease !important; }
+
+/* ─── FOCUS ─── */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* ─── ANIMATIONS ─── */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+.animate-spin { animation: spin 1s linear infinite; }
+.fade-in { animation: fadeIn 0.3s ease forwards; }
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%       { opacity: 0.6; transform: scale(0.85); }
+}
+.pulse-dot { animation: pulse-dot 2s ease-in-out infinite; }
