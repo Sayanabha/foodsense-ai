@@ -1,7 +1,8 @@
 import { useLocation } from 'react-router-dom'
 import { useTheme } from '../../context/ThemeContext'
 import { Sun, Moon, Bell } from 'lucide-react'
-
+import { useEffect, useState } from 'react'
+import { modelStatus } from '../../lib/gemini'
 const meta = {
   '/':            { title: 'Overview',          sub: "Today's food waste intelligence"           },
   '/predictions': { title: 'Predictions',        sub: 'AI-powered demand forecasting'            },
@@ -38,7 +39,44 @@ const IconBtn = ({ onClick, children, label }) => (
     {children}
   </button>
 )
+function ModelBadge() {
+  const [model, setModel] = useState(null)
 
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (modelStatus.lastUsed !== model) {
+        setModel(modelStatus.lastUsed)
+      }
+    }, 1000)
+    return () => clearInterval(interval)
+  }, [model])
+
+  if (!model) return null
+
+  const isGroq = model === 'groq'
+
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: '0.35rem',
+      padding: '0.2rem 0.6rem',
+      background: isGroq ? 'var(--amber-bg)' : 'var(--accent-bg)',
+      border: `1px solid ${isGroq ? 'var(--amber-border)' : 'var(--accent-border)'}`,
+      borderRadius: 6,
+      fontSize: '0.65rem',
+      fontWeight: 600,
+      color: isGroq ? 'var(--amber)' : 'var(--accent)',
+      fontFamily: 'Geist Mono, monospace',
+      marginRight: '0.25rem',
+    }}>
+      <span style={{
+        width: 5, height: 5, borderRadius: '50%',
+        background: isGroq ? 'var(--amber)' : 'var(--accent)',
+        flexShrink: 0,
+      }} />
+      {isGroq ? 'Groq · Llama 3.3' : 'Gemini 2.5'}
+    </div>
+  )
+}
 export default function Topbar() {
   const { pathname } = useLocation()
   const { theme, toggle } = useTheme()
@@ -87,6 +125,7 @@ export default function Topbar() {
         }}>
           {date}
         </span>
+<ModelBadge />
 
         <IconBtn label="Notifications"><Bell size={14} strokeWidth={1.75} /></IconBtn>
 

@@ -3,6 +3,7 @@ import { askGemini } from '../lib/gemini'
 import { useInventory } from '../hooks/useInventory'
 import { useWasteLog } from '../hooks/useWasteLog'
 import { Send, Bot, User, Loader, Database } from 'lucide-react'
+import AnalyticsExport from '../components/dashboard/AnalyticsExport'
 
 const SUGGESTIONS = [
   "What should I cook today to use expiring items?",
@@ -60,29 +61,31 @@ export default function AIAssistantPage() {
     <div style={{ maxWidth: 760, margin: '0 auto', height: 'calc(100vh - 130px)', display: 'flex', flexDirection: 'column', gap: 10 }}>
 
       {/* Context toggle */}
-      <div style={{
-        display: 'flex', alignItems: 'center', gap: 8,
-        padding: '0.5rem 0.8rem', background: '#1a221b',
-        border: '1px solid #2a352b', borderRadius: 6, fontSize: '0.7rem',
+<div style={{
+  display: 'flex', alignItems: 'center', gap: 8,
+  padding: '0.5rem 0.8rem', background: '#1a221b',
+  border: '1px solid #2a352b', borderRadius: 6, fontSize: '0.7rem',
+}}>
+  <Database size={12} color={useContext ? '#3ddc68' : '#4a5e4b'} />
+  <span style={{ color: '#7a9980' }}>Live kitchen data:</span>
+  <span style={{ color: useContext ? '#3ddc68' : '#4a5e4b' }}>
+    {useContext
+      ? `${inventory.length} inventory items · ₹${thisWeekCostLost.toLocaleString('en-IN')} cost lost this week`
+      : 'disabled'}
+  </span>
+  <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
+    <button
+      onClick={() => setUseContext(c => !c)}
+      style={{
+        background: 'none', border: '1px solid #2a352b',
+        borderRadius: 4, padding: '0.15rem 0.5rem',
+        color: '#4a5e4b', fontSize: '0.62rem', cursor: 'pointer',
       }}>
-        <Database size={12} color={useContext ? '#3ddc68' : '#4a5e4b'} />
-        <span style={{ color: '#7a9980' }}>Live kitchen data:</span>
-        <span style={{ color: useContext ? '#3ddc68' : '#4a5e4b' }}>
-          {useContext
-            ? `${inventory.length} inventory items · ₹${thisWeekCostLost.toLocaleString('en-IN')} cost lost this week`
-            : 'disabled'}
-        </span>
-        <button
-          onClick={() => setUseContext(c => !c)}
-          style={{
-            marginLeft: 'auto', background: 'none', border: '1px solid #2a352b',
-            borderRadius: 4, padding: '0.15rem 0.5rem',
-            color: '#4a5e4b', fontSize: '0.62rem', cursor: 'pointer',
-          }}>
-          {useContext ? 'Disable' : 'Enable'}
-        </button>
-      </div>
-
+      {useContext ? 'Disable' : 'Enable'}
+    </button>
+    <AnalyticsExport />
+  </div>
+</div>
       {/* Messages */}
       <div style={{
         flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 10,

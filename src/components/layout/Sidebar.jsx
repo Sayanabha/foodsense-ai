@@ -4,6 +4,8 @@ import {
   MessageSquare, BarChart3, Leaf,
   Camera, Heart, FlaskConical
 } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { modelStatus } from '../../lib/gemini'
 
 const groups = [
   {
@@ -25,7 +27,58 @@ const groups = [
     ],
   },
 ]
+function ModelStatusPill() {
+  const [model, setModel] = useState(null)
 
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setModel(modelStatus.lastUsed)
+    }, 800)
+    return () => clearInterval(interval)
+  }, [])
+
+  const isGroq    = model === 'groq'
+  const hasModel  = model !== null
+
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: '0.5rem',
+      padding: '0.5rem 0.75rem',
+      background: isGroq ? 'var(--amber-bg)' : 'var(--accent-bg)',
+      border: `1px solid ${isGroq ? 'var(--amber-border)' : 'var(--accent-border)'}`,
+      borderRadius: 8,
+      transition: 'all 0.3s ease',
+    }}>
+      <span style={{
+        width: 6, height: 6, borderRadius: '50%',
+        background: isGroq ? 'var(--amber)' : 'var(--accent)',
+        flexShrink: 0,
+      }} className="pulse-dot" />
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+        <span style={{
+          fontSize: '0.7rem',
+          color: isGroq ? 'var(--amber)' : 'var(--accent)',
+          fontFamily: 'Geist Mono, monospace',
+          fontWeight: 600,
+          lineHeight: 1,
+        }}>
+          {isGroq ? 'Llama 3.3 · Groq' : 'Gemini 2.5 · Live'}
+        </span>
+        {hasModel && (
+          <span style={{
+            fontSize: '0.58rem',
+            color: isGroq ? 'var(--amber)' : 'var(--accent)',
+            opacity: 0.7,
+            fontFamily: 'Geist Mono, monospace',
+            lineHeight: 1,
+          }}>
+            {isGroq ? 'fallback active' : 'primary model'}
+          </span>
+        )}
+      </div>
+    </div>
+  )
+}
 export default function Sidebar() {
   return (
     <aside style={{
@@ -107,19 +160,9 @@ export default function Sidebar() {
       </nav>
 
       {/* Status */}
-      <div style={{ padding: '1rem 1.25rem', borderTop: '1px solid var(--border)' }}>
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: '0.5rem',
-          padding: '0.5rem 0.75rem',
-          background: 'var(--accent-bg)', border: '1px solid var(--accent-border)',
-          borderRadius: 8,
-        }}>
-          <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--accent)', flexShrink: 0 }} className="pulse-dot" />
-          <span style={{ fontSize: '0.7rem', color: 'var(--accent)', fontFamily: 'Geist Mono, monospace', fontWeight: 500 }}>
-            Gemini · Live
-          </span>
-        </div>
-      </div>
+<div style={{ padding: '1rem 1.25rem', borderTop: '1px solid var(--border)' }}>
+  <ModelStatusPill />
+</div>
     </aside>
   )
 }

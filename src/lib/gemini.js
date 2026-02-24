@@ -1,18 +1,167 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
+// ─────────────────────────────────────────────────────────────
+// FoodSense AI — Model Layer
+//
+// Primary:  Gemini 2.5 Flash  (Google)
+// Fallback: Llama 3.3 70B     (Groq)
+//
+// All functions try Gemini first. If Gemini throws for any
+// reason (rate limit, quota, network, bad key), they silently
+// retry with Groq. If both fail, a clear error is thrown.
+// ─────────────────────────────────────────────────────────────
 
-const genAI = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY);
+import { GoogleGenerativeAI } from '@google/generative-ai'
 
-export const model = genAI.getGenerativeModel({
-  model: "gemini-2.5-flash",
-});
+// ── Clients ───────────────────────────────────────────────────
+const genAI = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY)
+const geminiModel = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' })
 
-/* ─────────────────────────────────────────
-   1. General chat assistant
-───────────────────────────────────────── */
+const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions'
+const GROQ_MODEL   = 'llama-3.3-70b-versatile'
+const GROQ_KEY     = import.meta.env.VITE_GROQ_API_KEY
+
+// ── Model status tracker (visible to UI if needed) ────────────
+export const modelStatus = {
+  lastUsed:    null,   // 'gemini' | 'groq'
+  geminiFails: 0,
+  groqFails:   0,
+  reset() { this.geminiFails = 0; this.groqFails = 0 },
+}
+
+// ── Core: call Gemini ─────────────────────────────────────────
+async function callGemini(prompt) {
+  const result = await geminiModel.generateContent(prompt)
+  const text   = result.response.text()
+  if (!text) throw new Error('Gemini returned empty response')
+  modelStatus.lastUsed = 'gemini'
+  return text
+}
+
+// ── Core: call Groq (OpenAI-compatible) ───────────────────────
+async function callGroq(prompt) {
+  if (!GROQ_KEY) throw new Error('VITE_GROQ_API_KEY is not set')
+
+  const res = await fetch(GROQ_API_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type':  'application/json',
+      'Authorization': `Bearer ${GROQ_KEY}`,
+    },
+    body: JSON.stringify({
+      model:       GROQ_MODEL,
+      messages:    [{ role: 'user', content: prompt }],
+      temperature: 0.7,
+      max_tokens:  1024,
+    }),
+  })
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error(`Groq error ${res.status}: ${err?.error?.message || res.statusText}`)
+  }
+
+  const data = await res.json()
+  const text = data.choices?.[0]?.message?.content
+  if (!text) throw new Error('Groq returned empty response')
+  modelStatus.lastUsed = 'groq'
+  return text
+}
+
+// ── Core: call Groq with vision (base64 image) ────────────────
+async function callGroqVision(prompt, base64Image, mimeType) {
+  if (!GROQ_KEY) throw new Error('VITE_GROQ_API_KEY is not set')
+
+  // Groq supports vision via llama-4-scout or meta-llama/llama-4-maverick
+  const res = await fetch(GROQ_API_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type':  'application/json',
+      'Authorization': `Bearer ${GROQ_KEY}`,
+    },
+    body: JSON.stringify({
+      model: 'meta-llama/llama-4-scout-17b-16e-instruct',
+      messages: [{
+        role: 'user',
+        content: [
+          { type: 'text',      text: prompt },
+          { type: 'image_url', image_url: { url: `data:${mimeType};base64,${base64Image}` } },
+        ],
+      }],
+      temperature: 0.3,
+      max_tokens:  512,
+    }),
+  })
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error(`Groq vision error ${res.status}: ${err?.error?.message || res.statusText}`)
+  }
+
+  const data = await res.json()
+  const text = data.choices?.[0]?.message?.content
+  if (!text) throw new Error('Groq vision returned empty response')
+  modelStatus.lastUsed = 'groq'
+  return text
+}
+
+// ── Fallback orchestrator (text) ──────────────────────────────
+async function withFallback(prompt) {
+  // Try Gemini
+  try {
+    return await callGemini(prompt)
+  } catch (geminiErr) {
+    console.warn('[FoodSense] Gemini failed, trying Groq:', geminiErr.message)
+    modelStatus.geminiFails++
+  }
+
+  // Try Groq
+  try {
+    return await callGroq(prompt)
+  } catch (groqErr) {
+    console.warn('[FoodSense] Groq also failed:', groqErr.message)
+    modelStatus.groqFails++
+    throw new Error(
+      `Both models failed.\n` +
+      `Gemini: check VITE_GEMINI_API_KEY and quota.\n` +
+      `Groq: check VITE_GROQ_API_KEY.\n` +
+      `Last Groq error: ${groqErr.message}`
+    )
+  }
+}
+
+// ── Fallback orchestrator (vision) ────────────────────────────
+async function withFallbackVision(prompt, base64Image, mimeType) {
+  // Try Gemini vision first
+  try {
+    const imagePart = { inlineData: { data: base64Image, mimeType } }
+    const result    = await geminiModel.generateContent([prompt, imagePart])
+    const text      = result.response.text()
+    if (!text) throw new Error('empty response')
+    modelStatus.lastUsed = 'gemini'
+    return text
+  } catch (geminiErr) {
+    console.warn('[FoodSense] Gemini vision failed, trying Groq vision:', geminiErr.message)
+    modelStatus.geminiFails++
+  }
+
+  // Try Groq vision
+  try {
+    return await callGroqVision(prompt, base64Image, mimeType)
+  } catch (groqErr) {
+    modelStatus.groqFails++
+    throw new Error(`Both vision models failed. Groq: ${groqErr.message}`)
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+// PUBLIC API — identical signatures to before.
+// Your pages and hooks call these exactly as they did.
+// ─────────────────────────────────────────────────────────────
+
+/* 1. General chat assistant */
 export async function askGemini(prompt, contextData = null) {
   const ctx = contextData
     ? `\n\nLive kitchen data:\n${JSON.stringify(contextData, null, 2)}\n\n`
-    : "";
+    : ''
 
   const fullPrompt = `You are FoodSense AI, an expert food waste reduction assistant for restaurants and hostels in India.
 You have access to live inventory, sales, and waste data.
@@ -20,16 +169,12 @@ Always give practical, specific, numbered recommendations.
 Use Indian food context (dal, paneer, roti, etc.) where relevant.
 Keep answers concise — max 4 sentences or a short numbered list.
 ${ctx}
-User: ${prompt}`;
+User: ${prompt}`
 
-  const result = await model.generateContent(fullPrompt);
-  return result.response.text();
+  return withFallback(fullPrompt)
 }
 
-/* ─────────────────────────────────────────
-   2. Generate demand prediction for a menu item
-   Uses last 7 days of sales to predict tomorrow
-───────────────────────────────────────── */
+/* 2. Demand prediction */
 export async function generatePrediction(menuItem, salesHistory, contextFactors = {}) {
   const prompt = `You are a demand forecasting expert for a restaurant/hostel kitchen.
 
@@ -52,24 +197,19 @@ Respond in this EXACT JSON format, nothing else:
   "predicted_qty": 45,
   "confidence": 87,
   "reasoning": "Steady upward trend with weekend spike expected"
-}`;
+}`
 
-  const result = await model.generateContent(prompt);
-  const text = result.response.text();
-
+  const text = await withFallback(prompt)
   try {
-    const clean = text.replace(/```json|```/g, '').trim();
-    return JSON.parse(clean);
+    return JSON.parse(text.replace(/```json|```/g, '').trim())
   } catch {
-    return { predicted_qty: 40, confidence: 75, reasoning: "Default estimate based on averages." };
+    return { predicted_qty: 40, confidence: 75, reasoning: 'Default estimate based on averages.' }
   }
 }
 
-/* ─────────────────────────────────────────
-   3. Menu suggestions for expiring items
-───────────────────────────────────────── */
+/* 3. Menu suggestions for expiring items */
 export async function getMenuSuggestions(expiringItems, menuItems = []) {
-  if (!expiringItems.length) return "No items expiring soon — great inventory management!";
+  if (!expiringItems.length) return 'No items expiring soon — great inventory management!'
 
   const prompt = `You are a creative chef and food waste consultant for an Indian restaurant/hostel.
 
@@ -84,24 +224,21 @@ Suggest 3 specific dishes or daily specials that:
 3. Can be prepared quickly
 
 Format as:
-**Dish Name** — Brief description using [ingredient]. Prep time: X mins.`;
+**Dish Name** — Brief description using [ingredient]. Prep time: X mins.`
 
-  const result = await model.generateContent(prompt);
-  return result.response.text();
+  return withFallback(prompt)
 }
 
-/* ─────────────────────────────────────────
-   4. Weekly waste summary report
-───────────────────────────────────────── */
+/* 4. Weekly waste summary report */
 export async function generateWeeklyReport(wasteData, salesData, inventoryData) {
-  const totalWaste = wasteData.reduce((s, w) => s + Number(w.quantity), 0).toFixed(1);
-  const totalCostLost = wasteData.reduce((s, w) => s + Number(w.cost_lost), 0);
-  const avgAccuracy = salesData.length > 0
+  const totalWaste    = wasteData.reduce((s, w) => s + Number(w.quantity), 0).toFixed(1)
+  const totalCostLost = wasteData.reduce((s, w) => s + Number(w.cost_lost), 0)
+  const avgAccuracy   = salesData.length
     ? (salesData.reduce((acc, s) => {
-        const diff = Math.abs(s.servings_prepared - s.servings_sold);
-        return acc + Math.max(0, 100 - (diff / Math.max(s.servings_prepared, 1)) * 100);
+        const diff = Math.abs(s.servings_prepared - s.servings_sold)
+        return acc + Math.max(0, 100 - (diff / Math.max(s.servings_prepared, 1)) * 100)
       }, 0) / salesData.length).toFixed(1)
-    : 'N/A';
+    : 'N/A'
 
   const prompt = `You are generating a professional weekly food waste report for a restaurant/hostel manager.
 
@@ -110,8 +247,8 @@ This week's data:
 - Total cost lost to waste: ₹${totalCostLost}
 - Forecast accuracy: ${avgAccuracy}%
 - Inventory items at risk: ${inventoryData.filter(i => {
-    const d = Math.ceil((new Date(i.expires_at) - new Date()) / 86400000);
-    return d <= 2;
+    const d = Math.ceil((new Date(i.expires_at) - new Date()) / 86400000)
+    return d <= 2
   }).length}
 - Waste log entries: ${wasteData.length}
 
@@ -125,21 +262,18 @@ Write a structured weekly report with these sections:
 4. **Top 3 Recommendations for Next Week**
 5. **Projected Savings if Recommendations Followed**
 
-Be specific with numbers. Use Indian currency (₹). Keep it under 300 words.`;
+Be specific with numbers. Use Indian currency (₹). Keep it under 300 words.`
 
-  const result = await model.generateContent(prompt);
-  return result.response.text();
+  return withFallback(prompt)
 }
 
-/* ─────────────────────────────────────────
-   5. Smart purchase order generator
-───────────────────────────────────────── */
+/* 5. Smart purchase order generator */
 export async function generatePurchaseOrder(inventory, predictions, salesHistory) {
-  const lowStock = inventory.filter(i => Number(i.quantity) < 5);
+  const lowStock     = inventory.filter(i => Number(i.quantity) < 5)
   const expiringSoon = inventory.filter(i => {
-    const d = Math.ceil((new Date(i.expires_at) - new Date()) / 86400000);
-    return d <= 3;
-  });
+    const d = Math.ceil((new Date(i.expires_at) - new Date()) / 86400000)
+    return d <= 3
+  })
 
   const prompt = `You are a procurement expert for an Indian restaurant/hostel.
 
@@ -170,31 +304,22 @@ Respond in this EXACT JSON format:
   ],
   "total_estimated_cost": 850,
   "notes": "Order before 8am for same-day delivery"
-}`;
+}`
 
-  const result = await model.generateContent(prompt);
-  const text = result.response.text();
-
+  const text = await withFallback(prompt)
   try {
-    const clean = text.replace(/```json|```/g, '').trim();
-    return JSON.parse(clean);
+    return JSON.parse(text.replace(/```json|```/g, '').trim())
   } catch {
     return {
       order_items: [],
       total_estimated_cost: 0,
-      notes: "Could not generate order. Check your inventory data."
-    };
+      notes: 'Could not generate order. Check your inventory data.',
+    }
   }
 }
-/* ─────────────────────────────────────────
-   6. Photo-based waste identification
-   Accepts a base64 image string + mimeType
-───────────────────────────────────────── */
-export async function identifyWasteFromPhoto(base64Image, mimeType = 'image/jpeg') {
-  const imagePart = {
-    inlineData: { data: base64Image, mimeType },
-  }
 
+/* 6. Photo-based waste identification (vision) */
+export async function identifyWasteFromPhoto(base64Image, mimeType = 'image/jpeg') {
   const prompt = `You are a food waste identification expert for an Indian restaurant/hostel kitchen.
 
 Analyze this photo of food waste and respond in this EXACT JSON format, nothing else:
@@ -217,12 +342,9 @@ Rules:
 - Be conservative with quantity estimates
 - estimated_cost_inr should be a reasonable market value for that quantity in India`
 
-  const result = await model.generateContent([prompt, imagePart])
-  const text = result.response.text()
-
+  const text = await withFallbackVision(prompt, base64Image, mimeType)
   try {
-    const clean = text.replace(/```json|```/g, '').trim()
-    return JSON.parse(clean)
+    return JSON.parse(text.replace(/```json|```/g, '').trim())
   } catch {
     return {
       identified: false,
@@ -233,10 +355,7 @@ Rules:
   }
 }
 
-/* ─────────────────────────────────────────
-   7. NGO Donation Matcher
-   Analyzes surplus and generates donation plan
-───────────────────────────────────────── */
+/* 7. NGO donation matcher */
 export async function analyzeSurplusForDonation(surplusItems, location = 'India') {
   if (!surplusItems.length) {
     return { can_donate: false, message: 'No surplus items detected today.', items: [], instructions: '' }
@@ -268,19 +387,16 @@ Analyze this surplus and respond in this EXACT JSON format:
   "impact_summary": "Your donation today will feed approximately 45 people"
 }`
 
-  const result = await model.generateContent(prompt)
-  const text = result.response.text()
-
+  const text = await withFallback(prompt)
   try {
-    const clean = text.replace(/```json|```/g, '').trim()
-    return JSON.parse(clean)
+    return JSON.parse(text.replace(/```json|```/g, '').trim())
   } catch {
     return {
       can_donate: true,
       total_meals_estimated: 0,
       donation_items: surplusItems.map(i => ({
         item: i.name, quantity: `${i.quantity} ${i.unit}`,
-        safe_to_donate: true, reason: 'Check freshness before donating'
+        safe_to_donate: true, reason: 'Check freshness before donating',
       })),
       ngo_types_to_contact: ['Local NGOs', 'Food banks', 'Community kitchens'],
       best_time_to_donate: 'As soon as possible',
@@ -291,9 +407,7 @@ Analyze this surplus and respond in this EXACT JSON format:
   }
 }
 
-/* ─────────────────────────────────────────
-   8. What-If Scenario Planner
-───────────────────────────────────────── */
+/* 8. What-If scenario planner */
 export async function runScenario(scenario, inventoryData, salesData, wasteData) {
   const totalWeeklyWaste = wasteData.reduce((s, w) => s + Number(w.quantity), 0).toFixed(1)
   const totalWeeklyCost  = wasteData.reduce((s, w) => s + Number(w.cost_lost), 0)
@@ -330,21 +444,14 @@ Provide a detailed what-if analysis. Respond in this EXACT JSON format:
     "Reduce weekly dessert waste by ~30%"
   ],
   "recommendation": "proceed",
-  "recommendation_reason": "The data supports this change. Low demand on weekdays combined with high waste makes removal logical. Consider keeping it on weekends only.",
+  "recommendation_reason": "The data supports this change.",
   "alternative_suggestion": "Offer Gulab Jamun only on Friday-Sunday instead of full removal",
   "confidence": 82
-}
+}`
 
-feasibility must be: high, medium, or low
-recommendation must be: proceed, caution, or avoid
-projected_waste_change_pct: negative means waste reduction (good), positive means more waste`
-
-  const result = await model.generateContent(prompt)
-  const text = result.response.text()
-
+  const text = await withFallback(prompt)
   try {
-    const clean = text.replace(/```json|```/g, '').trim()
-    return JSON.parse(clean)
+    return JSON.parse(text.replace(/```json|```/g, '').trim())
   } catch {
     return null
   }
